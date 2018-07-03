@@ -63,3 +63,8 @@ cursor.execute("""ALTER TABLE branches DROP review""")
 
 db.commit()
 db.close()
+
+
+def runtime_migrate():
+    print "Hello"
+

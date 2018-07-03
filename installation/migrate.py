@@ -17,6 +17,7 @@
 import os
 import sys
 import json
+import shutil
 
 import installation
 
@@ -54,6 +55,32 @@ def will_modify_dbschema(data):
         if script.startswith("dbschema."):
             return True
     return False
+
+def install(data):
+    target_dir = os.path.join(installation.paths.etc_dir, "main", "migrations")
+    os.mkdir(target_dir)
+
+    if os.path.exists("installation/migrations"):
+        for script in os.listdir("installation/migrations"):
+            if not script.endswith(".py"):
+                continue
+
+            module_path = os.path.join("installation/migrations", os.path.splitext(script)[0])
+            target_file = os.path.join(target_dir, script)
+
+            try:
+                installation.process.check_input([
+                    sys.executable, '-c', "'from %s import runtime_migrate'" % module_path
+                ])
+
+                shutil.copyfile(os.path.join("installation/migrations", script), target_file)
+
+                installation.config.set_file_mode_and_owner(target_file)
+
+            except Exception as ex:
+                print "Exception %r" % ex
+                continue
+
 
 def upgrade(arguments, data):
     if "migrations" not in data:
