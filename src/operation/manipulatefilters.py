@@ -135,6 +135,88 @@ class DeleteFilter(Operation):
 
         return OperationResult()
 
+class ReapplyReviewFilters(Operation):
+    def __init__(self):
+        Operation.__init__(self, {"review_id": int, "dry_run": Optional(bool)})
+
+    def process(self, db, user, review_id, dry_run=False):
+        if user.isAnonymous():
+            return OperationFailureMustLogin()
+
+        review = dbutils.review.Review.fromId(db, review_id)
+
+        if not user.hasRole(db, "administrator") and not user in review.owners:
+            raise OperationFailure(
+                code="notallowed",
+                title="Not allowed!",
+                message="Operation not permitted.")
+
+        applyfilters = review.applyfilters
+        applyparentfilters = review.applyparentfilters
+        reviewers, watchers = reviewing.utils.getReviewersAndWatchers(
+            db,
+            review.repository,
+            commits=review.getCommitSet(db),
+            reviewfilters=review.getReviewFilters(db),
+            applyfilters=applyfilters,
+            applyparentfilters=applyparentfilters,
+            reviewerbestmatch=True)
+
+        old_reviewusers = review.getReviewUsers(db)
+        old_reviewuserfiles = review.getReviewUserFiles(db)
+
+        new_reviewusers = set()
+        new_reviewers = set()
+        new_reviewuserfiles = set()
+
+        for file_id, file_users in reviewers.items():
+            for user_id, user_changesets in file_users.items():
+                if user_id:
+                    new_reviewers.add(user_id)
+                    new_reviewusers.add(user_id)
+
+                    for changeset_id in user_changesets:
+                        new_reviewuserfiles.add((user_id, changeset_id,
+                                                 file_id))
+
+        for file_id, file_users in watchers.items():
+            for user_id, _ in file_users.items():
+                if user_id:
+                    new_reviewusers.add(user_id)
+
+        reviewuserfiles_remove = old_reviewuserfiles - new_reviewuserfiles
+        reviewuserfiles_add = new_reviewuserfiles - old_reviewuserfiles
+
+        reviewusers_remove = old_reviewusers - new_reviewusers - set(
+            owner.id for owner in review.owners)
+        reviewusers_add = new_reviewusers - old_reviewusers
+
+        if not dry_run:
+            cursor = db.cursor()
+            cursor.executemany(
+                "INSERT INTO reviewusers (review, uid) VALUES (%s, %s)",
+                ((review.id, user) for user in reviewusers_add))
+            cursor.executemany(
+                "DELETE FROM reviewusers WHERE review=%s AND uid=%s",
+                ((review.id, user) for user in reviewusers_remove))
+
+            cursor.executemany(
+                "INSERT INTO reviewuserfiles (file, uid) SELECT id, %s FROM reviewfiles WHERE review=%s AND changeset=%s AND file=%s",
+                ((user_id, review.id, ch_id, f_id)
+                 for (user_id, ch_id, f_id) in reviewuserfiles_add))
+            cursor.executemany(
+                "DELETE FROM reviewuserfiles WHERE uid=%s and file=(SELECT id FROM reviewfiles WHERE review=%s AND changeset=%s AND file=%s)",
+                ((user_id, review.id, ch_id, f_id)
+                 for (user_id, ch_id, f_id) in reviewuserfiles_remove))
+            db.commit()
+
+        return OperationResult(
+            added_users=list(reviewusers_add),
+            removed_users=list(reviewusers_remove),
+            added_filters=list(reviewuserfiles_add),
+            removed_filters=list(reviewuserfiles_remove))
+
+
 class ReapplyFilters(Operation):
     def __init__(self):
         Operation.__init__(self, { "repository_id": Optional(int),

@@ -185,30 +185,20 @@ def assignChanges(db, user, review, commits=None, changesets=None, update=False)
     reviewers, watchers = getReviewersAndWatchers(db, review.repository, changesets=changesets, reviewfilters=review.getReviewFilters(db),
                                                   applyfilters=applyfilters, applyparentfilters=applyparentfilters, reviewerbestmatch=True)
 
-    cursor.execute("SELECT uid FROM reviewusers WHERE review=%s", (review.id,))
+    reviewusers = review.getReviewUsers(db)
 
-    reviewusers = set([user_id for (user_id,) in cursor])
     reviewusers_values = set()
     reviewuserfiles_values = set()
 
-    reviewuserfiles_existing = {}
+    reviewuserfiles_existing = set()
 
     if update:
-        cursor.execute("""SELECT reviewuserfiles.uid, reviewfiles.changeset, reviewfiles.file
-                            FROM reviewfiles
-                            JOIN reviewuserfiles ON (reviewuserfiles.file=reviewfiles.id)
-                           WHERE reviewfiles.review=%s""", (review.id,))
-        for user_id, changeset_id, file_id in cursor:
-            reviewuserfiles_existing[(user_id, changeset_id, file_id)] = True
+        reviewuserfiles_existing = review.getReviewUserFiles(db)
 
     new_reviewers = set()
     new_watchers = set()
 
-    cursor.execute("""SELECT DISTINCT uid
-                        FROM reviewfiles
-                        JOIN reviewuserfiles ON (reviewuserfiles.file=reviewfiles.id)
-                       WHERE review=%s""", (review.id,))
-    old_reviewers = set([user_id for (user_id,) in cursor])
+    old_reviewers = review.getReviewers(db)
 
     for file_id, file_users in reviewers.items():
         for user_id, user_changesets in file_users.items():

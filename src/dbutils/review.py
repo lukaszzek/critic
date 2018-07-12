@@ -442,6 +442,33 @@ class Review(object):
 
         return False
 
+    def getReviewUsers(self, db):
+        cursor = db.cursor()
+
+        cursor.execute("SELECT uid FROM reviewusers WHERE review=%s", (self.id,))
+
+        return set(user_id for (user_id,) in cursor)
+
+    def getReviewers(self, db):
+        cursor = db.cursor()
+
+        cursor.execute("""SELECT DISTINCT uid
+                        FROM reviewfiles
+                        JOIN reviewuserfiles ON (reviewuserfiles.file=reviewfiles.id)
+                        WHERE review=%s""", (self.id,))
+        return set(user_id for (user_id,) in cursor)
+
+    def getReviewUserFiles(self, db):
+        cursor = db.cursor()
+
+        cursor.execute("""SELECT reviewuserfiles.uid, reviewfiles.changeset, reviewfiles.file
+                            FROM reviewfiles
+                            JOIN reviewuserfiles ON (reviewuserfiles.file=reviewfiles.id)
+                           WHERE reviewfiles.review=%s""", (self.id,))
+        return set((user_id, changeset_id, file_id) for (user_id, changeset_id, file_id) in cursor)
+
+
+
     def getJS(self):
         return "var review = critic.review = { id: %d, branch: { id: %d, name: %r }, owners: [ %s ], serial: %d };" % (self.id, self.branch.id, self.branch.name, ", ".join(owner.getJSConstructor() for owner in self.owners), self.serial)
 
