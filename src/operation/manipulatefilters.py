@@ -151,15 +151,13 @@ class ReapplyReviewFilters(Operation):
                 title="Not allowed!",
                 message="Operation not permitted.")
 
-        applyfilters = review.applyfilters
-        applyparentfilters = review.applyparentfilters
         reviewers, watchers = reviewing.utils.getReviewersAndWatchers(
             db,
             review.repository,
             commits=review.getCommitSet(db),
             reviewfilters=review.getReviewFilters(db),
-            applyfilters=applyfilters,
-            applyparentfilters=applyparentfilters,
+            applyfilters=review.applyfilters,
+            applyparentfilters=review.applyparentfilters,
             reviewerbestmatch=True)
 
         new_review_users = set()
